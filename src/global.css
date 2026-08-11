@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --font-display: Inter, Manrope, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+    Segoe UI Symbol, Noto Color Emoji;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  --font-rounded: Manrope, Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --background-900: #040506;
+  --background-800: #090c0f;
+  --card: #0b0f12;
+  --primary: #33e18a;
+  --primary-2: #5bff8a;
+  --primary-glow: rgba(91, 255, 138, 0.24);
+  --accent: #63b7ff;
+  --foreground: #f5f7f2;
+  --muted: #93a19a;
+  --border: rgba(255, 255, 255, 0.08);
+  --radius-lg: 26px;
+  --radius-md: 18px;
+  --transition: 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --page-padding: 24px;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+html {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(91, 255, 138, 0.08), transparent 26%),
+    radial-gradient(circle at 80% 18%, rgba(99, 183, 255, 0.1), transparent 24%),
+    radial-gradient(circle at 60% 82%, rgba(255, 255, 255, 0.06), transparent 20%),
+    linear-gradient(180deg, #060708 0%, #040506 45%, #020304 100%);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-display);
+  background: transparent;
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(51, 225, 138, 0.28);
+  color: #f5f7f2;
+}
+
+.site-container {
+  width: 100%;
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--page-padding);
+  padding-right: var(--page-padding);
+}
