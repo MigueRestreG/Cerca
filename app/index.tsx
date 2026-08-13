@@ -3,7 +3,7 @@ import { Redirect } from 'expo-router';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function IndexRoute() {
-  const { actor } = useAuth();
+  const { accessToken } = useAuth();
 
-  return <Redirect href={actor ? '/(app)/home' : '/(Auth)/sign-in'} />;
+  return <Redirect href={accessToken ? '/(app)/home' : '/(Auth)/sign-in'} />;
 }
