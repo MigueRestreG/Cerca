@@ -4,11 +4,13 @@ import { useRouter } from 'expo-router';
 
 import { API_BASE_URL } from '@/api/config';
 import { AppScreen } from '@/components/app-screen';
-import { Card, LanguageSwitcher, PrimaryButton, SecondaryButton } from '@/components/ui-kit';
+import { LanguageSwitcher, PrimaryButton, SecondaryButton } from '@/components/ui-kit';
 import { useTheme } from '@/hooks/use-theme';
 import { getLocale } from '@/i18n';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
+
+import { AccountSection } from './components/account-section';
 
 const languages = [
   { code: 'es' as const, label: 'Español' },
@@ -25,25 +27,15 @@ export default function AccountScreen() {
 
   return (
     <AppScreen>
-      <Card>
+      <AccountSection title={t('account.title')}>
         <View style={{ gap: 14 }}>
-          <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 2.2, textTransform: 'uppercase', color: theme.accent }}>
-              {t('account.title')}
-            </Text>
-            <Text style={{ fontSize: 15, lineHeight: 23, fontWeight: '500', color: theme.textSecondary, maxWidth: 760 }}>
-              {t('account.subtitle')}
-            </Text>
-          </View>
+          <Text style={{ fontSize: 15, lineHeight: 23, fontWeight: '500', color: theme.textSecondary, maxWidth: 760 }}>{t('account.subtitle')}</Text>
           <PrimaryButton label={t('common.search')} href="/(app)/search" />
         </View>
-      </Card>
+      </AccountSection>
 
-      <Card>
+      <AccountSection title={t('account.session')}>
         <View style={{ gap: 10 }}>
-          <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase', color: theme.textSecondary }}>
-            {t('account.session')}
-          </Text>
           <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>{actor?.id ?? t('account.noSession')}</Text>
           <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{accessToken ? t('account.connected') : t('account.disconnected')}</Text>
           <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{API_BASE_URL}</Text>
@@ -59,37 +51,30 @@ export default function AccountScreen() {
             <SecondaryButton label={t('account.becomeProvider')} onPress={() => becomeProvider()} />
           </View>
         </View>
-      </Card>
+      </AccountSection>
 
-      <Card>
+      <AccountSection title={t('account.language')}>
         <View style={{ gap: 12 }}>
-          <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase', color: theme.textSecondary }}>
-            {t('account.language')}
-          </Text>
           <LanguageSwitcher value={language} onChange={setLanguage} languages={languages} />
         </View>
-      </Card>
+      </AccountSection>
 
-      <Card>
+      <AccountSection title={t('account.localePreview')}>
         <View style={{ gap: 10 }}>
-          <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase', color: theme.textSecondary }}>
-            {t('account.localePreview')}
-          </Text>
           <Text style={{ fontSize: 22, lineHeight: 28, fontWeight: '800', color: theme.text }}>{locale}</Text>
           <Text style={{ fontSize: 14, lineHeight: 21, fontWeight: '500', color: theme.textSecondary }}>{t('account.demoNote')}</Text>
         </View>
-      </Card>
+      </AccountSection>
 
-      <Card>
+      <AccountSection title={t('account.capabilities')} accent>
         <View style={{ gap: 10 }}>
-          <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase', color: theme.accent }}>{t('account.capabilities')}</Text>
           <View style={{ gap: 8 }}>
             <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{actor?.capacities.join(' · ') ?? t('account.noSession')}</Text>
             <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{actor?.platformRole ?? t('account.noSession')}</Text>
             <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>ES / EN / PT</Text>
           </View>
         </View>
-      </Card>
+      </AccountSection>
     </AppScreen>
   );
 }

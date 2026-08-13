@@ -16,6 +16,20 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+   If you see `ENOSPC: System limit for number of file watchers reached` on Linux, raise the
+   inotify watcher limit and try again:
+
+   ```bash
+   sudo sysctl -w fs.inotify.max_user_watches=524288
+   ```
+
+   To make it persistent across reboots, add this line to `/etc/sysctl.conf` or a file under
+   `/etc/sysctl.d/`:
+
+   ```bash
+   fs.inotify.max_user_watches=524288
+   ```
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
