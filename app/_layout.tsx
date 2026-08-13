@@ -8,7 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/hooks/use-theme';
-import { AuthProvider } from '@/providers/auth-provider';
+import { AuthProvider, useAuth } from '@/providers/auth-provider';
 import { AppProvider } from '@/providers/app-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -16,10 +16,17 @@ SplashScreen.setOptions({ fade: true, duration: 180 });
 
 function RootStack() {
   const theme = useTheme();
+  const { accessToken, isHydrating } = useAuth();
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
+    if (!isHydrating) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isHydrating]);
+
+  if (isHydrating) {
+    return null;
+  }
 
   return (
     <>
@@ -39,8 +46,12 @@ function RootStack() {
           contentStyle: { backgroundColor: 'transparent' },
         }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="(Auth)" />
-        <Stack.Screen name="(app)" />
+        <Stack.Protected guard={!accessToken}>
+          <Stack.Screen name="(Auth)" />
+        </Stack.Protected>
+        <Stack.Protected guard={!!accessToken}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
       </Stack>
     </>
   );
