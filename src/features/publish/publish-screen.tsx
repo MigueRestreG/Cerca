@@ -6,7 +6,7 @@ import { apiClient } from '@/api/client';
 import { apiCities } from '@/api/cities';
 import { AppScreen } from '@/components/app-screen';
 import { Card, DemoInput, LanguageSwitcher, Pill, PrimaryButton, SecondaryButton, Stepper, TextArea } from '@/components/ui-kit';
-import { useRemoteData } from '@/hooks/use-remote-data';
+import { useCategoriesQuery } from '@/hooks/use-api-queries';
 import { useTheme } from '@/hooks/use-theme';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
@@ -34,7 +34,7 @@ export default function PublishScreen() {
   const [minimumHours, setMinimumHours] = useState('2');
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdListingId, setCreatedListingId] = useState<string | null>(null);
-  const categories = useRemoteData((signal) => apiClient.getCategories(signal), []);
+  const categories = useCategoriesQuery();
   const selectedCategoryName = useMemo(() => categories.data?.find((category) => category.id === selectedCategory)?.name ?? '', [categories.data, selectedCategory]);
 
   const steps = [t('publish.steps.basics'), t('publish.steps.service'), t('publish.steps.pricing'), t('publish.steps.preview')];

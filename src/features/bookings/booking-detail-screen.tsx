@@ -2,14 +2,21 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
-import { apiClient } from '@/api/client';
 import { AppScreen } from '@/components/app-screen';
 import { Card, EmptyState, PrimaryButton, SecondaryButton } from '@/components/ui-kit';
-import { useRemoteData } from '@/hooks/use-remote-data';
+import { useBookingQuery, useListingQuery } from '@/hooks/use-api-queries';
+import {
+  useAcceptBookingMutation,
+  useDeclineBookingMutation,
+  useCancelBookingMutation,
+  useWriteReviewMutation,
+} from '@/hooks/use-api-mutations';
 import { useTheme } from '@/hooks/use-theme';
 import { formatMoney } from '@/i18n';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
+import { canReviewBooking } from '@/lib/permissions';
+import { formatApiErrorMessage } from '@/lib/api-errors';
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -20,22 +27,14 @@ export default function BookingDetailScreen() {
   const [reviewRating, setReviewRating] = useState('5');
   const [reviewBody, setReviewBody] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  // mutation loading states are used instead of local busyAction state
+  const acceptMutation = useAcceptBookingMutation();
+  const declineMutation = useDeclineBookingMutation();
+  const cancelMutation = useCancelBookingMutation();
+  const reviewMutation = useWriteReviewMutation();
 
-  const booking = useRemoteData((signal) => {
-    if (typeof id !== 'string' || !accessToken) {
-      return Promise.reject(new Error('Missing booking id'));
-    }
-
-    return apiClient.getBooking(id, accessToken, signal);
-  }, [id, accessToken]);
-
-  const listing = useRemoteData((signal) => {
-    if (!booking.data) {
-      return Promise.resolve(null);
-    }
-
-    return apiClient.getListing(booking.data.listingId, signal);
-  }, [booking.data?.listingId]);
+  const booking = useBookingQuery(typeof id === 'string' ? id : null, accessToken);
+  const listing = useListingQuery(booking.data?.listingId ?? null);
 
   const isOwner = Boolean(actor && listing.data && actor.id === listing.data.ownerId);
   const isCustomer = Boolean(actor && booking.data && actor.id === booking.data.customerId);
@@ -46,9 +45,12 @@ export default function BookingDetailScreen() {
     }
 
     const scheduledFor = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await apiClient.acceptBooking(booking.data.id, { scheduledFor }, accessToken);
-    booking.refresh();
-    setMessage(t('booking.accepted'));
+    acceptMutation.mutate({ id: booking.data.id, input: { scheduledFor }, token: accessToken }, {
+      onSuccess: async () => {
+        await booking.refetch();
+        setMessage(t('booking.accepted'));
+      },
+    });
   }
 
   async function handleDecline() {
@@ -56,9 +58,12 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    await apiClient.declineBooking(booking.data.id, { reason: 'unavailable' }, accessToken);
-    booking.refresh();
-    setMessage(t('booking.declined'));
+    declineMutation.mutate({ id: booking.data.id, input: { reason: 'unavailable' }, token: accessToken }, {
+      onSuccess: async () => {
+        await booking.refetch();
+        setMessage(t('booking.declined'));
+      },
+    });
   }
 
   async function handleCancel() {
@@ -66,9 +71,12 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    await apiClient.cancelBooking(booking.data.id, accessToken);
-    booking.refresh();
-    setMessage(t('booking.cancelled'));
+    cancelMutation.mutate({ id: booking.data.id, token: accessToken }, {
+      onSuccess: async () => {
+        await booking.refetch();
+        setMessage(t('booking.cancelled'));
+      },
+    });
   }
 
   async function handleReview() {
@@ -76,16 +84,15 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    await apiClient.writeReview(
-      booking.data.id,
-      { rating: Math.min(5, Math.max(1, Number.parseInt(reviewRating, 10) || 5)), body: reviewBody.trim() || t('booking.reviewDefault') },
-      accessToken,
-    );
-    booking.refresh();
-    setMessage(t('booking.review'));
+    reviewMutation.mutate({ bookingId: booking.data.id, input: { rating: Math.min(5, Math.max(1, Number.parseInt(reviewRating, 10) || 5)), body: reviewBody.trim() || t('booking.reviewDefault') }, token: accessToken }, {
+      onSuccess: async () => {
+        await booking.refetch();
+        setMessage(t('booking.review'));
+      },
+    });
   }
 
-  if (booking.loading || (listing.loading && !listing.data)) {
+  if (booking.isLoading || (listing.isLoading && !listing.data)) {
     return (
       <AppScreen>
         <EmptyState title={t('booking.detailTitle')} body={t('common.loading')} />
@@ -96,12 +103,22 @@ export default function BookingDetailScreen() {
   if (booking.error || !booking.data) {
     return (
       <AppScreen>
-        <EmptyState title={t('booking.detailTitle')} body={booking.error ?? String(id ?? '')} actionLabel={t('common.back')} onActionPress={() => router.back()} />
+        <EmptyState title={t('booking.detailTitle')} body={formatApiErrorMessage(booking.error, language)} actionLabel={t('common.back')} onActionPress={() => router.back()} />
       </AppScreen>
     );
   }
 
-  const canReview = booking.data.status === 'completed' && !booking.data.reviewId;
+  const reviewGate = canReviewBooking(actor, booking.data);
+  const canReview = reviewGate.allowed;
+  const reviewReasonText = reviewGate.allowed
+    ? t('booking.review')
+    : reviewGate.reason === 'not_your_booking'
+      ? 'Solo el cliente de esta reserva puede reseñar.'
+      : reviewGate.reason === 'not_completed'
+        ? 'La reserva todavía no está completada.'
+        : reviewGate.reason === 'already_reviewed'
+          ? 'Esta reserva ya fue reseñada.'
+          : 'La ventana para reseñar ya cerró.';
 
   return (
     <AppScreen>
@@ -139,12 +156,18 @@ export default function BookingDetailScreen() {
           {message ?? (canReview ? t('booking.review') : t('bookings.reviewLocked'))}
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          {isOwner && booking.data.status === 'requested' ? <PrimaryButton label={t('booking.accept')} onPress={handleAccept} /> : null}
-          {isOwner && booking.data.status === 'requested' ? <SecondaryButton label={t('booking.decline')} onPress={handleDecline} /> : null}
-          {isCustomer && booking.data.status !== 'completed' ? <PrimaryButton label={t('booking.cancel')} onPress={handleCancel} /> : null}
-          {canReview ? <PrimaryButton label={t('booking.markReviewed')} onPress={handleReview} /> : null}
+          {isOwner && booking.data.status === 'requested' ? <PrimaryButton label={t('booking.accept')} onPress={handleAccept} loading={(acceptMutation as any).isLoading} /> : null}
+          {isOwner && booking.data.status === 'requested' ? <SecondaryButton label={t('booking.decline')} onPress={handleDecline} loading={(declineMutation as any).isLoading} /> : null}
+          {isCustomer && booking.data.status !== 'completed' ? <PrimaryButton label={t('booking.cancel')} onPress={handleCancel} loading={(cancelMutation as any).isLoading} /> : null}
+          <PrimaryButton label={t('booking.markReviewed')} onPress={handleReview} disabled={!canReview || (reviewMutation as any).isLoading} loading={(reviewMutation as any).isLoading} />
           <SecondaryButton label={t('common.back')} onPress={() => router.back()} />
         </View>
+      </Card>
+
+      <Card>
+        <Text style={{ fontSize: 14, lineHeight: 21, fontWeight: '500', color: theme.textSecondary }}>
+          {reviewReasonText}
+        </Text>
       </Card>
 
       {canReview ? (

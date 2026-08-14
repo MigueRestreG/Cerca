@@ -9,6 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { getLocale } from '@/i18n';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
+import { can } from '@/lib/permissions';
 
 import { AccountSection } from './components/account-section';
 
@@ -24,6 +25,7 @@ export default function AccountScreen() {
   const theme = useTheme();
   const locale = getLocale(language);
   const { actor, accessToken, becomeProvider, signOut } = useAuth();
+  const canBecomeProvider = can(actor, 'provider:become');
 
   return (
     <AppScreen>
@@ -48,7 +50,7 @@ export default function AccountScreen() {
                 });
               }}
             />
-            <SecondaryButton label={t('account.becomeProvider')} onPress={() => becomeProvider()} />
+            <SecondaryButton label={t('account.becomeProvider')} onPress={() => becomeProvider()} disabled={!canBecomeProvider} />
           </View>
         </View>
       </AccountSection>

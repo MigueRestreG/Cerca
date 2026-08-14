@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Text, View } from "react-native";
 
 import type { ApiListingSearchItem } from "@/api/types";
@@ -12,7 +13,7 @@ type SearchResultCardProps = {
   t: (key: string) => string;
 };
 
-export function SearchResultCard({
+function SearchResultCardComponent({
   listing,
   language,
   categoryName,
@@ -79,3 +80,5 @@ export function SearchResultCard({
     </Card>
   );
 }
+
+export const SearchResultCard = memo(SearchResultCardComponent);

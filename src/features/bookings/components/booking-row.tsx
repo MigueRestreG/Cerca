@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Text, View } from "react-native";
 
 import type { ApiBooking } from "@/api/types";
@@ -11,7 +12,7 @@ type BookingRowProps = {
   t: (key: string) => string;
 };
 
-export function BookingRow({
+function BookingRowComponent({
   booking,
   listingTitle,
   language,
@@ -56,3 +57,5 @@ export function BookingRow({
     </Card>
   );
 }
+
+export const BookingRow = memo(BookingRowComponent);

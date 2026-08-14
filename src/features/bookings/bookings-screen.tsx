@@ -5,10 +5,12 @@ import { apiClient } from "@/api/client";
 import type { ApiBookingRole } from "@/api/types";
 import { AppScreen } from "@/components/app-screen";
 import { Card, EmptyState, Pill, SectionTitle } from "@/components/ui-kit";
-import { useRemoteData } from "@/hooks/use-remote-data";
+import { useBookingsQuery } from "@/hooks/use-api-queries";
 import { useTheme } from "@/hooks/use-theme";
 import { useApp } from "@/providers/app-provider";
 import { useAuth } from "@/providers/auth-provider";
+
+import { useQueries } from '@tanstack/react-query';
 
 import { BookingRow } from "./components/booking-row";
 
@@ -24,39 +26,29 @@ export default function BookingsScreen() {
     ? selectedRole
     : (availableRoles[0] ?? "customer");
 
-  const bookings = useRemoteData(
-    (signal) => {
-      if (!accessToken) {
-        return Promise.resolve({ items: [], nextCursor: null });
-      }
+  const bookings = useBookingsQuery(accessToken, resolvedRole);
+  const listingTitleQueries = useQueries({
+    queries: (bookings.data?.items ?? []).map((booking) => ({
+      queryKey: ['listing-title', booking.listingId],
+      queryFn: ({ signal }) => apiClient.getListing(booking.listingId, signal),
+      enabled: Boolean(bookings.data?.items.length),
+      staleTime: 5 * 60_000,
+    })),
+  });
 
-      return apiClient.listBookings(
-        accessToken,
-        resolvedRole,
-        null,
-        20,
-        signal,
-      );
-    },
-    [accessToken, resolvedRole],
-  );
+  const titleByListingId = useMemo(
+    () =>
+      new Map(
+        listingTitleQueries.reduce<[string, string][]>((entries, query, index) => {
+          const booking = bookings.data?.items[index];
+          if (booking && query.data) {
+            entries.push([booking.listingId, query.data.title]);
+          }
 
-  const titleByListingId = useRemoteData(
-    async (signal) => {
-      if (!bookings.data?.items.length || !accessToken) {
-        return new Map<string, string>();
-      }
-
-      const entries = await Promise.all(
-        bookings.data.items.map(async (booking) => {
-          const listing = await apiClient.getListing(booking.listingId, signal);
-          return [booking.listingId, listing.title] as const;
-        }),
-      );
-
-      return new Map(entries);
-    },
-    [bookings.data?.items, accessToken],
+          return entries;
+        }, []),
+      ),
+    [bookings.data?.items, listingTitleQueries],
   );
 
   const completed = useMemo(
@@ -163,12 +155,12 @@ export default function BookingsScreen() {
 
       <SectionTitle title={t("bookings.upcoming")} />
       <View style={{ gap: 12 }}>
-        {bookings.loading ? (
+        {bookings.isLoading ? (
           <Text style={{ color: theme.textSecondary }}>
             {t("common.loading")}
           </Text>
         ) : null}
-        {!bookings.loading && upcoming.length === 0 ? (
+        {!bookings.isLoading && upcoming.length === 0 ? (
           <EmptyState
             title={t("bookings.upcoming")}
             body={t("bookings.reviewLocked")}
@@ -178,9 +170,7 @@ export default function BookingsScreen() {
           <BookingRow
             key={booking.id}
             booking={booking}
-            listingTitle={
-              titleByListingId.data?.get(booking.listingId) ?? booking.listingId
-            }
+            listingTitle={titleByListingId.get(booking.listingId) ?? booking.listingId}
             language={language}
             t={t}
           />
@@ -189,7 +179,7 @@ export default function BookingsScreen() {
 
       <SectionTitle title={t("bookings.completed")} />
       <View style={{ gap: 12 }}>
-        {!bookings.loading && completed.length === 0 ? (
+        {!bookings.isLoading && completed.length === 0 ? (
           <EmptyState
             title={t("bookings.completed")}
             body={t("bookings.reviewLocked")}
@@ -199,9 +189,7 @@ export default function BookingsScreen() {
           <BookingRow
             key={booking.id}
             booking={booking}
-            listingTitle={
-              titleByListingId.data?.get(booking.listingId) ?? booking.listingId
-            }
+            listingTitle={titleByListingId.get(booking.listingId) ?? booking.listingId}
             language={language}
             t={t}
           />

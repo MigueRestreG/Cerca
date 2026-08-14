@@ -6,20 +6,29 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { QueryClientProvider } from '@tanstack/react-query';
 
 import { useTheme } from '@/hooks/use-theme';
-import { AuthProvider } from '@/providers/auth-provider';
+import { queryClient } from '@/lib/query-client';
 import { AppProvider } from '@/providers/app-provider';
+import { AuthProvider, useAuth } from '@/providers/auth-provider';
 
 SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ fade: true, duration: 180 });
 
 function RootStack() {
+  const { loading } = useAuth();
   const theme = useTheme();
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
+    if (!loading) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [loading]);
+
+  if (loading) {
+    return null;
+  }
 
   return (
     <>
@@ -50,11 +59,13 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AppProvider>
-          <AuthProvider>
-            <RootStack />
-          </AuthProvider>
-        </AppProvider>
+        <QueryClientProvider client={queryClient}>
+          <AppProvider>
+            <AuthProvider>
+              <RootStack />
+            </AuthProvider>
+          </AppProvider>
+        </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

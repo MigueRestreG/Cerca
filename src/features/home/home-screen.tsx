@@ -1,7 +1,6 @@
 import { Text, View } from "react-native";
 
 import { apiCities } from "@/api/cities";
-import { apiClient } from "@/api/client";
 import { AppScreen } from "@/components/app-screen";
 import {
   Card,
@@ -9,7 +8,7 @@ import {
   SecondaryButton,
   SectionTitle,
 } from "@/components/ui-kit";
-import { useRemoteData } from "@/hooks/use-remote-data";
+import { useCategoriesQuery, useListingsQuery } from "@/hooks/use-api-queries";
 import { useTheme } from "@/hooks/use-theme";
 import { formatCompactNumber, formatDistance } from "@/i18n";
 import { useApp } from "@/providers/app-provider";
@@ -19,15 +18,8 @@ import { ListingSummaryCard } from "./components/listing-summary-card";
 export default function HomeScreen() {
   const { language, t } = useApp();
   const theme = useTheme();
-  const categories = useRemoteData(
-    (signal) => apiClient.getCategories(signal),
-    [],
-  );
-  const featuredListings = useRemoteData(
-    (signal) =>
-      apiClient.searchListings({ cityId: apiCities[1].id, limit: 6 }, signal),
-    [],
-  );
+  const categories = useCategoriesQuery();
+  const featuredListings = useListingsQuery({ cityId: apiCities[1].id, limit: 6 });
 
   const categoryNameById = new Map(
     (categories.data ?? []).map((category) => [category.id, category.name]),
@@ -196,7 +188,7 @@ export default function HomeScreen() {
 
       <SectionTitle title={t("home.featured")} />
       <View style={{ gap: 14 }}>
-        {featuredListings.loading ? (
+        {featuredListings.isLoading ? (
           <Text style={{ color: theme.textSecondary }}>
             {t("common.loading")}
           </Text>

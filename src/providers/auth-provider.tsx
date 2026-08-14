@@ -2,7 +2,6 @@ import {
 	createContext,
 	useContext,
 	useEffect,
-	useMemo,
 	useState,
 	type ReactNode,
 } from "react";
@@ -21,7 +20,7 @@ type SessionState = {
     email: string;
     password: string;
     displayName: string;
-    capacities?: Array<"customer" | "provider">;
+    capacities?: ("customer" | "provider")[];
   }) => Promise<void>;
   signOut: () => Promise<void>;
   becomeProvider: () => Promise<void>;
@@ -40,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [actor, setActor] = useState<ApiActor | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const setSession = async (
     session: {
@@ -77,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string;
     password: string;
     displayName: string;
-    capacities?: Array<"customer" | "provider">;
+    capacities?: ("customer" | "provider")[];
   }) => {
     setLoading(true);
     try {
@@ -112,14 +111,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     const hydrateSession = async () => {
-      const persisted = await loadSession();
-      if (!active || !persisted) {
-        return;
-      }
+      try {
+        const persisted = await loadSession();
+        if (!active || !persisted) {
+          return;
+        }
 
-      setActor(persisted.actor);
-      setAccessToken(persisted.accessToken);
-      setRefreshToken(persisted.refreshToken);
+        setActor(persisted.actor);
+        setAccessToken(persisted.accessToken);
+        setRefreshToken(persisted.refreshToken);
+
+        try {
+          const me = await apiClient.getMe(persisted.accessToken);
+          if (active) {
+            setActor(me);
+          }
+        } catch {
+          if (active) {
+            await clearSession();
+            setActor(null);
+            setAccessToken(null);
+            setRefreshToken(null);
+          }
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
     };
 
     void hydrateSession();
@@ -129,46 +148,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    let active = true;
-    apiClient
-      .getMe(accessToken)
-      .then((me) => {
-        if (active) {
-          setActor(me);
-        }
-      })
-      .catch(async () => {
-        if (active) {
-          await setSession(null);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [accessToken]);
-
-  const value = useMemo<SessionState>(
-    () => ({
-      actor,
-      accessToken,
-      refreshToken,
-      loading,
-      signIn,
-      signUp,
-      signOut,
-      becomeProvider,
-      setSession,
-    }),
-    [actor, accessToken, refreshToken, loading],
+  return (
+    <AuthContext.Provider
+      value={{
+        actor,
+        accessToken,
+        refreshToken,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        becomeProvider,
+        setSession,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

@@ -431,7 +431,7 @@ export const apiClient = {
       email: string;
       password: string;
       displayName: string;
-      capacities?: Array<"customer" | "provider">;
+      capacities?: ("customer" | "provider")[];
     },
     signal?: AbortSignal,
   ) {

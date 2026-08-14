@@ -2,14 +2,20 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
-import { apiClient } from '@/api/client';
 import { AppScreen } from '@/components/app-screen';
 import { Card, EmptyState, PrimaryButton, SecondaryButton } from '@/components/ui-kit';
-import { useRemoteData } from '@/hooks/use-remote-data';
+import { useCategoriesQuery, useListingQuery, useListingReviewsQuery } from '@/hooks/use-api-queries';
 import { useTheme } from '@/hooks/use-theme';
 import { formatCompactNumber, formatMoney } from '@/i18n';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
+import { can } from '@/lib/permissions';
+import {
+  usePublishListingMutation,
+  usePauseListingMutation,
+  useCreateBookingMutation,
+} from '@/hooks/use-api-mutations';
+import { formatApiErrorMessage } from '@/lib/api-errors';
 
 function formatCreatedAt(value: string, language: 'es' | 'en' | 'pt') {
   return new Intl.DateTimeFormat(language === 'es' ? 'es-MX' : language === 'pt' ? 'pt-BR' : 'en-US', {
@@ -26,50 +32,50 @@ export default function ListingDetailScreen() {
   const { actor, accessToken } = useAuth();
   const [bookingNote, setBookingNote] = useState('');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const categories = useRemoteData((signal) => apiClient.getCategories(signal), []);
-
-  const listing = useRemoteData((signal) => {
-    if (typeof id !== 'string') {
-      return Promise.reject(new Error('Missing listing id'));
-    }
-
-    return apiClient.getListing(id, signal);
-  }, [id]);
-
-  const reviews = useRemoteData((signal) => {
-    if (!listing.data) {
-      return Promise.resolve({ items: [], nextCursor: null });
-    }
-
-    return apiClient.listListingReviews(listing.data.id, null, 10, signal);
-  }, [listing.data?.id]);
+  const categories = useCategoriesQuery();
+  const listing = useListingQuery(typeof id === 'string' ? id : null);
+  const reviews = useListingReviewsQuery(listing.data?.id ?? null);
 
   const categoryLabel = categories.data?.find((category) => category.id === listing.data?.categoryId)?.name ?? listing.data?.categoryId ?? '';
   const isOwner = Boolean(actor && listing.data && actor.id === listing.data.ownerId);
+  const canBook = can(actor, 'booking:create');
+  const publishMutation = usePublishListingMutation();
+  const pauseMutation = usePauseListingMutation();
+  const createBookingMutation = useCreateBookingMutation();
 
   async function handlePublishToggle() {
-    if (!listing.data || !accessToken) {
+    if (!listing.data || !accessToken) return;
+
+    if (listing.data.status === 'published') {
+      pauseMutation.mutate({ id: listing.data.id, token: accessToken }, {
+        onSuccess(updated) {
+          setActionMessage(updated.status);
+        },
+      });
       return;
     }
 
-    const updated = listing.data.status === 'published'
-      ? await apiClient.pauseListing(listing.data.id, accessToken)
-      : await apiClient.publishListing(listing.data.id, accessToken);
-
-    setActionMessage(updated.status);
-    listing.refresh();
+    publishMutation.mutate({ id: listing.data.id, token: accessToken }, {
+      onSuccess(updated) {
+        setActionMessage(updated.status);
+      },
+    });
   }
 
   async function handleBookNow() {
-    if (!listing.data || !accessToken) {
-      return;
-    }
+    if (!listing.data || !accessToken) return;
 
-    const booking = await apiClient.createBooking({ listingId: listing.data.id, note: bookingNote.trim() || undefined }, accessToken);
-    router.push(`/(app)/booking/${booking.id}`);
+    createBookingMutation.mutate(
+      { input: { listingId: listing.data.id, note: bookingNote.trim() || undefined }, token: accessToken },
+      {
+        onSuccess(booking) {
+          router.push(`/(app)/booking/${booking.id}`);
+        },
+      },
+    );
   }
 
-  if (listing.loading || (reviews.loading && !reviews.data)) {
+  if (listing.isLoading || (reviews.isLoading && !reviews.data)) {
     return (
       <AppScreen>
         <EmptyState title={t('common.loading')} body={t('listing.loadingBody')} />
@@ -80,7 +86,7 @@ export default function ListingDetailScreen() {
   if (listing.error || !listing.data) {
     return (
       <AppScreen>
-        <EmptyState title={t('listing.detailTitle')} body={listing.error ?? String(id ?? '')} actionLabel={t('common.back')} onActionPress={() => router.back()} />
+        <EmptyState title={t('listing.detailTitle')} body={formatApiErrorMessage(listing.error, language)} actionLabel={t('common.back')} onActionPress={() => router.back()} />
       </AppScreen>
     );
   }
@@ -132,10 +138,10 @@ export default function ListingDetailScreen() {
               <View style={{ borderWidth: 1, borderColor: theme.border, backgroundColor: theme.backgroundSelected, borderRadius: 16, paddingHorizontal: 14 }}>
                 <TextInput value={bookingNote} onChangeText={setBookingNote} placeholder={t('listing.notePlaceholder')} placeholderTextColor={theme.textSecondary} style={{ color: theme.text, fontSize: 15, fontWeight: '600', paddingVertical: 12 }} />
               </View>
-              <PrimaryButton label={t('listing.booking')} onPress={handleBookNow} />
+              <PrimaryButton label={t('listing.booking')} onPress={handleBookNow} disabled={!canBook || (createBookingMutation as any).isLoading} loading={(createBookingMutation as any).isLoading} />
             </View>
           ) : null}
-          {isOwner ? <PrimaryButton label={listing.data.status === 'published' ? t('listing.pause') : t('listing.publish')} onPress={handlePublishToggle} /> : null}
+          {isOwner ? <PrimaryButton label={listing.data.status === 'published' ? t('listing.pause') : t('listing.publish')} onPress={handlePublishToggle} loading={(publishMutation as any).isLoading || (pauseMutation as any).isLoading} /> : null}
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           <SecondaryButton

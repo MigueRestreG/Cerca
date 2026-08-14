@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppScreen } from '@/UI';
+import { formatApiErrorMessage } from '@/lib/api-errors';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -49,7 +50,7 @@ export default function SignInScreen() {
         });
         router.replace('/(app)/home');
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Sign-up failed');
+        setError(formatApiErrorMessage(cause, language));
       }
 
       return;
@@ -59,7 +60,7 @@ export default function SignInScreen() {
       await signIn(email.trim(), password);
       router.replace('/(app)/home');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sign-in failed');
+      setError(formatApiErrorMessage(cause, language));
     }
   }
 

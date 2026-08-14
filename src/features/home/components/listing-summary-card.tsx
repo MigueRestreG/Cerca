@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Text, View } from "react-native";
 
 import type { ApiListingSearchItem } from "@/api/types";
@@ -12,7 +13,7 @@ type ListingSummaryCardProps = {
   t: (key: string) => string;
 };
 
-export function ListingSummaryCard({
+function ListingSummaryCardComponent({
   listing,
   language,
   categoryName,
@@ -84,3 +85,5 @@ export function ListingSummaryCard({
     </Card>
   );
 }
+
+export const ListingSummaryCard = memo(ListingSummaryCardComponent);

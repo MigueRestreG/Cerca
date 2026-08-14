@@ -1,9 +1,5 @@
 import type { Language } from '@/domain/demo-market';
-
-export type Money = {
-  amountMinor: number;
-  currency: string;
-};
+import { formatMoney as formatMoneyIntl, type MoneyLike } from '@/lib/money';
 
 export type { Language };
 
@@ -477,14 +473,8 @@ export function createTranslator(language: Language) {
   };
 }
 
-export function formatMoney(money: Money, language: Language) {
-  const locale = getLocale(language);
-  const amount = money.amountMinor / 100;
-
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: money.currency,
-  }).format(amount);
+export function formatMoney(money: MoneyLike, language: Language) {
+  return formatMoneyIntl(money, getLocale(language));
 }
 
 export function formatDistance(distanceKm: number, language: Language) {

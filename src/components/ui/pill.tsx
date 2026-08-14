@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export function Pill({ label, selected = false, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {

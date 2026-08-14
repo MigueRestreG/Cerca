@@ -1,39 +1,84 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
 
-export function PrimaryButton({ label, onPress, href }: { label: string; onPress?: () => void; href?: string }) {
+type ButtonProps = {
+  label: string;
+  onPress?: () => void;
+  href?: string;
+  disabled?: boolean;
+  loading?: boolean;
+};
+
+function ButtonShell({
+  children,
+  onPress,
+  href,
+  disabled = false,
+  loading = false,
+}: {
+  children: ReactNode;
+  onPress?: () => void;
+  href?: string;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const router = useRouter();
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (disabled || loading) {
+          return;
+        }
+
+        if (href) {
+          // router.push expects a typed path; cast to any to allow string URLs
+          (router as any).push(href);
+          return;
+        }
+
+        onPress?.();
+      }}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.buttonPressable,
+        (pressed || disabled || loading) && styles.buttonPressed,
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+export function PrimaryButton({ label, onPress, href, disabled = false, loading = false }: ButtonProps) {
   const theme = useTheme();
 
-  const button = (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.buttonPressable, pressed && styles.buttonPressed]}>
+  return (
+    <ButtonShell onPress={onPress} href={href} disabled={disabled} loading={loading}>
       <LinearGradient
         colors={[theme.neonStart, theme.neonMid, theme.neonEnd]}
         locations={[0, 0.58, 1]}
         start={{ x: 0.1, y: 0.1 }}
         end={{ x: 1, y: 1 }}
-        style={styles.primaryGradient}>
-        <Text style={[styles.primaryButtonText, { color: '#040506' }]}>{label}</Text>
+        style={styles.primaryGradient}
+      >
+        <Text style={[styles.primaryButtonText, { color: '#040506' }]}>
+          {loading ? `${label}...` : label}
+        </Text>
       </LinearGradient>
-    </Pressable>
-  );
-
-  return href ? (
-    <Link href={href as never} asChild>
-      {button}
-    </Link>
-  ) : (
-    button
+    </ButtonShell>
   );
 }
 
-export function SecondaryButton({ label, onPress, href }: { label: string; onPress?: () => void; href?: string }) {
+export function SecondaryButton({ label, onPress, href, disabled = false, loading = false }: ButtonProps) {
   const theme = useTheme();
 
-  const button = (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.buttonPressable, pressed && styles.buttonPressed]}>
+  return (
+    <ButtonShell onPress={onPress} href={href} disabled={disabled} loading={loading}>
       <Text
         style={[
           styles.secondaryButton,
@@ -42,18 +87,11 @@ export function SecondaryButton({ label, onPress, href }: { label: string; onPre
             borderColor: theme.border,
             color: theme.text,
           },
-        ]}>
-        {label}
+        ]}
+      >
+        {loading ? `${label}...` : label}
       </Text>
-    </Pressable>
-  );
-
-  return href ? (
-    <Link href={href as never} asChild>
-      {button}
-    </Link>
-  ) : (
-    button
+    </ButtonShell>
   );
 }
 
