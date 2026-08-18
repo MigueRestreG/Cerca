@@ -30,10 +30,10 @@ function ListingSummaryCard({ listing, language, categoryName, t }: { listing: A
           </Text>
         </View>
         <Text style={{ fontSize: 13, lineHeight: 19, color: theme.textSecondary }}>
-          {formatDistance(listing.distanceMeters / 1000, language)} · {listing.status}
+          {formatDistance(listing.distanceMeters / 1000, language)} · {t(`listing.statusValues.${listing.status.kind}`)}
         </Text>
         <Text style={{ fontSize: 13, lineHeight: 19, color: theme.textSecondary }}>
-          {listing.ratingAvg.toFixed(1)} · {formatCompactNumber(listing.ratingCount, language)} reviews
+          {listing.ratingAvg.toFixed(1)} · {formatCompactNumber(listing.ratingCount, language)} {t('common.reviews')}
         </Text>
         <SecondaryButton label={t('common.viewDetails')} href={`/(app)/listing/${listing.id}`} />
       </View>

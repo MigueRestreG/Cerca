@@ -7,7 +7,7 @@ import { AppScreen } from '@/components/app-screen';
 import { Card, EmptyState, PrimaryButton, SecondaryButton } from '@/components/ui-kit';
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { useTheme } from '@/hooks/use-theme';
-import { formatMoney } from '@/i18n';
+import { formatMoney, getLocale } from '@/i18n';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -20,10 +20,12 @@ export default function BookingDetailScreen() {
   const [reviewRating, setReviewRating] = useState('5');
   const [reviewBody, setReviewBody] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const booking = useRemoteData((signal) => {
     if (typeof id !== 'string' || !accessToken) {
-      return Promise.reject(new Error('Missing booking id'));
+      return Promise.reject(new Error(t('booking.missingBookingId')));
     }
 
     return apiClient.getBooking(id, accessToken, signal);
@@ -34,8 +36,8 @@ export default function BookingDetailScreen() {
       return Promise.resolve(null);
     }
 
-    return apiClient.getListing(booking.data.listingId, signal);
-  }, [booking.data?.listingId]);
+    return apiClient.getListing(booking.data.listingId, signal, accessToken ?? undefined);
+  }, [booking.data?.listingId, accessToken]);
 
   const isOwner = Boolean(actor && listing.data && actor.id === listing.data.ownerId);
   const isCustomer = Boolean(actor && booking.data && actor.id === booking.data.customerId);
@@ -45,10 +47,18 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    const scheduledFor = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await apiClient.acceptBooking(booking.data.id, { scheduledFor }, accessToken);
-    booking.refresh();
-    setMessage(t('booking.accepted'));
+    setBusy(true);
+    setActionError(null);
+    try {
+      const scheduledFor = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      await apiClient.acceptBooking(booking.data.id, { scheduledFor }, accessToken);
+      booking.refresh();
+      setMessage(t('booking.accepted'));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t('common.retry'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDecline() {
@@ -56,9 +66,17 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    await apiClient.declineBooking(booking.data.id, { reason: 'unavailable' }, accessToken);
-    booking.refresh();
-    setMessage(t('booking.declined'));
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiClient.declineBooking(booking.data.id, { reason: 'unavailable' }, accessToken);
+      booking.refresh();
+      setMessage(t('booking.declined'));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t('common.retry'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleCancel() {
@@ -66,9 +84,17 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    await apiClient.cancelBooking(booking.data.id, accessToken);
-    booking.refresh();
-    setMessage(t('booking.cancelled'));
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiClient.cancelBooking(booking.data.id, accessToken);
+      booking.refresh();
+      setMessage(t('booking.cancelled'));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t('common.retry'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleReview() {
@@ -76,13 +102,21 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    await apiClient.writeReview(
-      booking.data.id,
-      { rating: Math.min(5, Math.max(1, Number.parseInt(reviewRating, 10) || 5)), body: reviewBody.trim() || t('booking.reviewDefault') },
-      accessToken,
-    );
-    booking.refresh();
-    setMessage(t('booking.review'));
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiClient.writeReview(
+        booking.data.id,
+        { rating: Math.min(5, Math.max(1, Number.parseInt(reviewRating, 10) || 5)), body: reviewBody.trim() || t('booking.reviewDefault') },
+        accessToken,
+      );
+      booking.refresh();
+      setMessage(t('booking.review'));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t('common.retry'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (booking.loading || (listing.loading && !listing.data)) {
@@ -101,7 +135,7 @@ export default function BookingDetailScreen() {
     );
   }
 
-  const canReview = booking.data.status === 'completed' && !booking.data.reviewId;
+  const canReview = booking.data.status.kind === 'completed' && !booking.data.reviewId;
 
   return (
     <AppScreen>
@@ -117,7 +151,7 @@ export default function BookingDetailScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
             <Card style={{ flex: 1, minWidth: 160 }}>
               <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.6, textTransform: 'uppercase', color: theme.textSecondary }}>{t('booking.status')}</Text>
-              <Text style={{ fontSize: 18, lineHeight: 24, fontWeight: '900', color: theme.text }}>{booking.data.status}</Text>
+              <Text style={{ fontSize: 18, lineHeight: 24, fontWeight: '900', color: theme.text }}>{t(`booking.statusValues.${booking.data.status.kind}`)}</Text>
             </Card>
             <Card style={{ flex: 1, minWidth: 160 }}>
               <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.6, textTransform: 'uppercase', color: theme.textSecondary }}>{t('booking.customer')}</Text>
@@ -126,8 +160,8 @@ export default function BookingDetailScreen() {
           </View>
 
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.textSecondary }}>{t('booking.requestedAt')}: <Text style={{ color: theme.text }}>{new Date(booking.data.requestedAt).toLocaleString()}</Text></Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.textSecondary }}>{t('booking.scheduledFor')}: <Text style={{ color: theme.text }}>{booking.data.scheduledFor ?? '—'}</Text></Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.textSecondary }}>{t('booking.requestedAt')}: <Text style={{ color: theme.text }}>{booking.data.status.kind === 'requested' ? new Date(booking.data.status.requestedAt).toLocaleString(getLocale(language)) : booking.data.status.kind === 'accepted' ? new Date(booking.data.status.scheduledFor).toLocaleString(getLocale(language)) : '—'}</Text></Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.textSecondary }}>{t('booking.scheduledFor')}: <Text style={{ color: theme.text }}>{booking.data.status.kind === 'accepted' ? new Date(booking.data.status.scheduledFor).toLocaleString(getLocale(language)) : '—'}</Text></Text>
             <Text style={{ fontSize: 14, fontWeight: '700', color: theme.textSecondary }}>{t('booking.reviewId')}: <Text style={{ color: theme.text }}>{booking.data.reviewId ?? '—'}</Text></Text>
             <Text style={{ fontSize: 18, fontWeight: '900', color: theme.accentStrong }}>{listing.data?.priceFrom ? formatMoney(listing.data.priceFrom, language) : '—'}</Text>
           </View>
@@ -138,12 +172,13 @@ export default function BookingDetailScreen() {
         <Text style={{ fontSize: 14, lineHeight: 21, fontWeight: '500', color: theme.textSecondary }}>
           {message ?? (canReview ? t('booking.review') : t('bookings.reviewLocked'))}
         </Text>
+        {actionError ? <Text style={{ fontSize: 13, fontWeight: '700', color: theme.danger }}>{actionError}</Text> : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          {isOwner && booking.data.status === 'requested' ? <PrimaryButton label={t('booking.accept')} onPress={handleAccept} /> : null}
-          {isOwner && booking.data.status === 'requested' ? <SecondaryButton label={t('booking.decline')} onPress={handleDecline} /> : null}
-          {isCustomer && booking.data.status !== 'completed' ? <PrimaryButton label={t('booking.cancel')} onPress={handleCancel} /> : null}
-          {canReview ? <PrimaryButton label={t('booking.markReviewed')} onPress={handleReview} /> : null}
-          <SecondaryButton label={t('common.back')} onPress={() => router.back()} />
+          {isOwner && booking.data.status.kind === 'requested' ? <PrimaryButton label={busy ? t('common.loading') : t('booking.accept')} disabled={busy} onPress={handleAccept} /> : null}
+          {isOwner && booking.data.status.kind === 'requested' ? <SecondaryButton label={t('booking.decline')} disabled={busy} onPress={handleDecline} /> : null}
+          {isCustomer && booking.data.status.kind !== 'completed' ? <PrimaryButton label={busy ? t('common.loading') : t('booking.cancel')} disabled={busy} onPress={handleCancel} /> : null}
+          {canReview ? <PrimaryButton label={busy ? t('common.loading') : t('booking.markReviewed')} disabled={busy} onPress={handleReview} /> : null}
+          <SecondaryButton label={t('common.back')} disabled={busy} onPress={() => router.back()} />
         </View>
       </Card>
 

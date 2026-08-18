@@ -130,14 +130,16 @@ export function LanguageSwitcher({
   );
 }
 
-export function PrimaryButton({ label, onPress, href }: { label: string; onPress?: () => void; href?: string }) {
+export function PrimaryButton({ label, onPress, href, disabled = false }: { label: string; onPress?: () => void; href?: string; disabled?: boolean }) {
   const theme = useTheme();
 
   const button = (
     <Pressable
-      onPress={onPress}
+      disabled={disabled}
+      onPress={disabled ? undefined : onPress}
       style={({ pressed }) => [
         styles.buttonPressable,
+        disabled && styles.buttonDisabled,
         pressed && styles.buttonPressed,
       ]}>
       <LinearGradient
@@ -151,6 +153,10 @@ export function PrimaryButton({ label, onPress, href }: { label: string; onPress
     </Pressable>
   );
 
+  if (href && disabled) {
+    return button;
+  }
+
   return href ? (
     <Link href={href as never} asChild>
       {button}
@@ -160,14 +166,16 @@ export function PrimaryButton({ label, onPress, href }: { label: string; onPress
   );
 }
 
-export function SecondaryButton({ label, onPress, href }: { label: string; onPress?: () => void; href?: string }) {
+export function SecondaryButton({ label, onPress, href, disabled = false }: { label: string; onPress?: () => void; href?: string; disabled?: boolean }) {
   const theme = useTheme();
 
   const button = (
     <Pressable
-      onPress={onPress}
+      disabled={disabled}
+      onPress={disabled ? undefined : onPress}
       style={({ pressed }) => [
         styles.buttonPressable,
+        disabled && styles.buttonDisabled,
         pressed && styles.buttonPressed,
       ]}>
       <View
@@ -182,6 +190,10 @@ export function SecondaryButton({ label, onPress, href }: { label: string; onPre
       </View>
     </Pressable>
   );
+
+  if (href && disabled) {
+    return button;
+  }
 
   return href ? (
     <Link href={href as never} asChild>
@@ -467,6 +479,9 @@ const styles = StyleSheet.create({
   buttonPressable: {
     alignSelf: 'flex-start',
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
   buttonPressed: {
     opacity: 0.82,
     transform: [{ scale: 0.985 }],
@@ -727,8 +742,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.3,
     textTransform: 'uppercase',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
   },
 });

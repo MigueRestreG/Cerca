@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppScreen, Card, LanguageSwitcher, PrimaryButton } from '@/UI';
+import { ApiError } from '@/api/client';
 import { useTheme } from '@/hooks/use-theme';
 import { useApp } from '@/providers/app-provider';
 import { useAuth } from '@/providers/auth-provider';
@@ -25,6 +26,27 @@ export default function SignInScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  function resolveAuthError(cause: unknown, fallbackKey: 'auth.signInFailed' | 'auth.signUpFailed') {
+    if (cause instanceof ApiError) {
+      if (cause.code === 'NETWORK_ERROR') {
+        return t('auth.networkError');
+      }
+
+      const normalized = `${cause.code} ${cause.reason ?? ''} ${cause.detail}`.toLowerCase();
+      if (normalized.includes('email') && (normalized.includes('exists') || normalized.includes('taken') || normalized.includes('duplicate'))) {
+        return t('auth.duplicateEmail');
+      }
+
+      if (cause.code === 'INVALID_CREDENTIALS' || normalized.includes('invalid_credentials')) {
+        return t('auth.invalidCredentials');
+      }
+
+      return cause.detail || t(fallbackKey);
+    }
+
+    return cause instanceof Error ? cause.message : t(fallbackKey);
+  }
+
   useEffect(() => {
     if (actor) {
       router.replace('/(app)/home');
@@ -33,33 +55,54 @@ export default function SignInScreen() {
 
   async function handleSubmit() {
     setError(null);
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setError(t('auth.emailRequired'));
+      return;
+    }
+
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      setError(t('auth.emailInvalid'));
+      return;
+    }
+
+    if (!password) {
+      setError(t('auth.passwordRequired'));
+      return;
+    }
+
+    if (mode === 'sign-up' && password.length < 8) {
+      setError(t('auth.passwordTooShort'));
+      return;
+    }
 
     if (mode === 'sign-up') {
       if (!displayName.trim()) {
-        setError('Please enter your name');
+        setError(t('auth.nameRequired'));
         return;
       }
 
       if (password !== confirmPassword) {
-        setError('Passwords do not match');
+        setError(t('auth.passwordMismatch'));
         return;
       }
 
       try {
-        await signUp({ email: email.trim(), password, displayName: displayName.trim(), capacities: ['customer'] });
+        await signUp({ email: normalizedEmail, password, displayName: displayName.trim(), capacities: ['customer'] });
         router.replace('/(app)/home');
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Sign-up failed');
+        setError(resolveAuthError(cause, 'auth.signUpFailed'));
       }
 
       return;
     }
 
     try {
-      await signIn(email.trim(), password);
+      await signIn(normalizedEmail, password);
       router.replace('/(app)/home');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sign-in failed');
+      setError(resolveAuthError(cause, 'auth.signInFailed'));
     }
   }
 
@@ -69,7 +112,7 @@ export default function SignInScreen() {
         <View style={styles.left}>
           <View style={styles.kickerRow}>
             <View style={[styles.kickerLine, { backgroundColor: theme.accent }]} />
-            <Text style={[styles.kicker, { color: theme.accent }]}>DARK PREMIUM UI SYSTEM</Text>
+            <Text style={[styles.kicker, { color: theme.accent }]}>{t('auth.uiSystem')}</Text>
           </View>
           <Text style={[styles.brand, { color: theme.text }]}>FLOW</Text>
           <Text style={[styles.title, { color: theme.text }]}>{t('home.heroTitle')}</Text>
@@ -77,58 +120,58 @@ export default function SignInScreen() {
           <Card style={styles.formCard}>
             <View style={styles.modeRow}>
               <Pressable onPress={() => setMode('sign-in')} style={({ pressed }) => [styles.modeButton, { borderColor: mode === 'sign-in' ? theme.accent : theme.border, backgroundColor: mode === 'sign-in' ? theme.accentSoft : theme.backgroundElement }, pressed && { opacity: 0.9 }]}> 
-                <Text style={{ color: mode === 'sign-in' ? theme.accentStrong : theme.textSecondary, fontWeight: '800' }}>Sign in</Text>
+                <Text style={{ color: mode === 'sign-in' ? theme.accentStrong : theme.textSecondary, fontWeight: '800' }}>{t('auth.modeSignIn')}</Text>
               </Pressable>
               <Pressable onPress={() => setMode('sign-up')} style={({ pressed }) => [styles.modeButton, { borderColor: mode === 'sign-up' ? theme.accent : theme.border, backgroundColor: mode === 'sign-up' ? theme.accentSoft : theme.backgroundElement }, pressed && { opacity: 0.9 }]}> 
-                <Text style={{ color: mode === 'sign-up' ? theme.accentStrong : theme.textSecondary, fontWeight: '800' }}>Create account</Text>
+                <Text style={{ color: mode === 'sign-up' ? theme.accentStrong : theme.textSecondary, fontWeight: '800' }}>{t('auth.modeSignUp')}</Text>
               </Pressable>
             </View>
             <View style={styles.formFields}>
               {mode === 'sign-up' ? (
                 <View style={styles.inputShell}>
-                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name</Text>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('auth.name')}</Text>
                   <TextInput
                     value={displayName}
                     onChangeText={setDisplayName}
                     autoCapitalize="words"
                     style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundSelected }]}
-                    placeholder="Your name"
+                    placeholder={t('auth.namePlaceholder')}
                     placeholderTextColor={theme.textSecondary}
                   />
                 </View>
               ) : null}
               <View style={styles.inputShell}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('auth.email')}</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundSelected }]}
-                  placeholder="you@example.com"
+                  placeholder={t('auth.emailPlaceholder')}
                   placeholderTextColor={theme.textSecondary}
                 />
               </View>
               <View style={styles.inputShell}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Password</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('auth.password')}</Text>
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
                   style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundSelected }]}
-                  placeholder="Choose a password"
+                  placeholder={t('auth.passwordPlaceholder')}
                   placeholderTextColor={theme.textSecondary}
                 />
               </View>
               {mode === 'sign-up' ? (
                 <View style={styles.inputShell}>
-                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Confirm password</Text>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('auth.confirmPassword')}</Text>
                   <TextInput
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
                     style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundSelected }]}
-                    placeholder="Repeat password"
+                    placeholder={t('auth.confirmPasswordPlaceholder')}
                     placeholderTextColor={theme.textSecondary}
                   />
                 </View>
@@ -137,7 +180,7 @@ export default function SignInScreen() {
             {error ? <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text> : null}
             <View style={styles.controls}>
               <LanguageSwitcher value={language} onChange={setLanguage} languages={languages} />
-              <PrimaryButton label={loading ? t('common.loading') : mode === 'sign-up' ? 'Create account' : 'Continue'} onPress={handleSubmit} />
+              <PrimaryButton label={loading ? t('common.loading') : mode === 'sign-up' ? t('auth.createAccount') : t('auth.continue')} onPress={handleSubmit} />
             </View>
           </Card>
         </View>
@@ -145,25 +188,25 @@ export default function SignInScreen() {
         <View style={styles.right}>
           <Card style={styles.heroCard}>
             <View style={styles.heroCardTop}>
-              <Text style={[styles.panelLabel, { color: theme.accent }]}>SIGN-IN PREVIEW</Text>
+              <Text style={[styles.panelLabel, { color: theme.accent }]}>{t('auth.previewTitle')}</Text>
               <Text style={[styles.panelValue, { color: theme.text }]}>ES / EN / PT</Text>
             </View>
             <View style={styles.metricRow}>
               <View style={styles.metricBlock}>
                 <Text style={[styles.metricNumber, { color: theme.text }]}>3</Text>
-                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>languages</Text>
+                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>{t('auth.languagesMetric')}</Text>
               </View>
               <View style={styles.metricBlock}>
                 <Text style={[styles.metricNumber, { color: theme.accentStrong }]}>57</Text>
-                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>expo sdk</Text>
+                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>{t('auth.expoSdkMetric')}</Text>
               </View>
             </View>
           </Card>
 
           <Card style={styles.sideCard}>
-            <Text style={[styles.panelLabel, { color: theme.accent }]}>MOTION</Text>
-            <Text style={[styles.sideTitle, { color: theme.text }]}>Soft glow, thin borders and measured spacing.</Text>
-            <Text style={[styles.sideCopy, { color: theme.textSecondary }]}>The interface keeps the app logic intact while moving the entire shell toward the same visual weight as the reference.</Text>
+            <Text style={[styles.panelLabel, { color: theme.accent }]}>{t('auth.motionLabel')}</Text>
+            <Text style={[styles.sideTitle, { color: theme.text }]}>{t('auth.motionTitle')}</Text>
+            <Text style={[styles.sideCopy, { color: theme.textSecondary }]}>{t('auth.motionBody')}</Text>
           </Card>
         </View>
       </View>

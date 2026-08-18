@@ -26,15 +26,17 @@ export default function ListingDetailScreen() {
   const { actor, accessToken } = useAuth();
   const [bookingNote, setBookingNote] = useState('');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const categories = useRemoteData((signal) => apiClient.getCategories(signal), []);
 
   const listing = useRemoteData((signal) => {
     if (typeof id !== 'string') {
-      return Promise.reject(new Error('Missing listing id'));
+      return Promise.reject(new Error(t('listing.missingListingId')));
     }
 
-    return apiClient.getListing(id, signal);
-  }, [id]);
+    return apiClient.getListing(id, signal, accessToken ?? undefined);
+  }, [id, accessToken]);
 
   const reviews = useRemoteData((signal) => {
     if (!listing.data) {
@@ -52,12 +54,20 @@ export default function ListingDetailScreen() {
       return;
     }
 
-    const updated = listing.data.status === 'published'
-      ? await apiClient.pauseListing(listing.data.id, accessToken)
-      : await apiClient.publishListing(listing.data.id, accessToken);
+    setBusy(true);
+    setActionError(null);
+    try {
+      const updated = listing.data.status.kind === 'published'
+        ? await apiClient.pauseListing(listing.data.id, accessToken)
+        : await apiClient.publishListing(listing.data.id, accessToken);
 
-    setActionMessage(updated.status);
-    listing.refresh();
+      setActionMessage(t(`listing.statusValues.${updated.status.kind}`));
+      listing.refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t('common.retry'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleBookNow() {
@@ -65,8 +75,16 @@ export default function ListingDetailScreen() {
       return;
     }
 
-    const booking = await apiClient.createBooking({ listingId: listing.data.id, note: bookingNote.trim() || undefined }, accessToken);
-    router.push(`/(app)/booking/${booking.id}`);
+    setBusy(true);
+    setActionError(null);
+    try {
+      const booking = await apiClient.createBooking({ listingId: listing.data.id, note: bookingNote.trim() || undefined }, accessToken);
+      router.push(`/(app)/booking/${booking.id}`);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t('common.retry'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (listing.loading || (reviews.loading && !reviews.data)) {
@@ -104,42 +122,44 @@ export default function ListingDetailScreen() {
             </Card>
             <Card style={{ flex: 1, minWidth: 160 }}>
               <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.6, textTransform: 'uppercase', color: theme.textSecondary }}>{t('listing.status')}</Text>
-              <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '900', color: theme.accentStrong }}>{listing.data.status}</Text>
+              <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '900', color: theme.accentStrong }}>{t(`listing.statusValues.${listing.data.status.kind}`)}</Text>
             </Card>
           </View>
 
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: theme.accentStrong }}>{listing.data.priceFrom ? formatMoney(listing.data.priceFrom, language) : t('listing.quoteOnly')}</Text>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: theme.accentStrong }}>{listing.data.pricing.model === 'fixed' ? formatMoney(listing.data.pricing.price, language) : t('listing.quoteOnly')}</Text>
             <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{t('listing.owner')}: <Text style={{ color: theme.text }}>{listing.data.ownerId}</Text></Text>
             <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{t('listing.createdAt')}: <Text style={{ color: theme.text }}>{formatCreatedAt(listing.data.createdAt, language)}</Text></Text>
             <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{t('listing.category')}: <Text style={{ color: theme.text }}>{categoryLabel}</Text></Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{t('listing.pricing')}: <Text style={{ color: theme.text }}>{listing.data.pricing.model}</Text></Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{t('listing.pricing')}: <Text style={{ color: theme.text }}>{t(`listing.pricingModelValues.${listing.data.pricing.model}`)}</Text></Text>
           </View>
         </View>
       </Card>
 
       <Card>
         <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase', color: theme.textSecondary }}>{t('listing.reviewHint')}</Text>
-        <Text style={{ fontSize: 14, lineHeight: 21, fontWeight: '500', color: theme.text }}>{listing.data.pricing.model === 'fixed' ? formatMoney(listing.data.pricing.price, language) : listing.data.pricing.model}</Text>
+        <Text style={{ fontSize: 14, lineHeight: 21, fontWeight: '500', color: theme.text }}>{listing.data.pricing.model === 'fixed' ? formatMoney(listing.data.pricing.price, language) : t(`listing.pricingModelValues.${listing.data.pricing.model}`)}</Text>
       </Card>
 
       <Card>
         <Text style={{ fontSize: 14, lineHeight: 21, fontWeight: '500', color: theme.textSecondary }}>{isOwner ? t('listing.ownerActions') : t('listing.bookingHint')}</Text>
         <View style={{ gap: 10 }}>
           {actionMessage ? <Text style={{ fontSize: 13, fontWeight: '700', color: theme.accentStrong }}>{actionMessage}</Text> : null}
+          {actionError ? <Text style={{ fontSize: 13, fontWeight: '700', color: theme.danger }}>{actionError}</Text> : null}
           {!isOwner ? (
             <View style={{ gap: 10 }}>
               <View style={{ borderWidth: 1, borderColor: theme.border, backgroundColor: theme.backgroundSelected, borderRadius: 16, paddingHorizontal: 14 }}>
                 <TextInput value={bookingNote} onChangeText={setBookingNote} placeholder={t('listing.notePlaceholder')} placeholderTextColor={theme.textSecondary} style={{ color: theme.text, fontSize: 15, fontWeight: '600', paddingVertical: 12 }} />
               </View>
-              <PrimaryButton label={t('listing.booking')} onPress={handleBookNow} />
+              <PrimaryButton label={busy ? t('common.loading') : t('listing.booking')} disabled={busy} onPress={handleBookNow} />
             </View>
           ) : null}
-          {isOwner ? <PrimaryButton label={listing.data.status === 'published' ? t('listing.pause') : t('listing.publish')} onPress={handlePublishToggle} /> : null}
+          {isOwner ? <PrimaryButton label={busy ? t('common.loading') : listing.data.status.kind === 'published' ? t('listing.pause') : t('listing.publish')} disabled={busy} onPress={handlePublishToggle} /> : null}
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           <SecondaryButton
             label={t('common.back')}
+            disabled={busy}
             onPress={() => {
               router.back();
             }}

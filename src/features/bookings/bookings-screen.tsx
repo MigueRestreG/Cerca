@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { apiClient } from '@/api/client';
@@ -20,9 +21,11 @@ function BookingRow({ booking, listingTitle, language, t }: { booking: ApiBookin
           {listingTitle}
         </Text>
         <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>
-          {booking.status} · {booking.reviewId ? 'reviewed' : 'pending'}
+          {t(`booking.statusValues.${booking.status.kind}`)} · {booking.reviewId ? t('bookings.reviewed') : t('bookings.pending')}
         </Text>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{new Date(booking.requestedAt).toLocaleString(language === 'es' ? 'es-MX' : language === 'pt' ? 'pt-BR' : 'en-US')}</Text>
+        {booking.status.kind === 'requested' && (
+          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>{new Date(booking.status.requestedAt).toLocaleString(language === 'es' ? 'es-MX' : language === 'pt' ? 'pt-BR' : 'en-US')}</Text>
+        )}
         <SecondaryButton label={t('common.viewDetails')} href={`/(app)/booking/${booking.id}`} />
       </View>
     </Card>
@@ -33,14 +36,17 @@ export default function BookingsScreen() {
   const { language, t } = useApp();
   const theme = useTheme();
   const { actor, accessToken } = useAuth();
-  const availableRoles = actor?.capacities ?? ['customer'];
-  const [selectedRole, setSelectedRole] = useState<ApiBookingRole>(availableRoles[0] ?? 'customer');
+  const availableRoles = useMemo(() => actor?.capacities ?? ['customer'], [actor?.capacities]);
+  const [selectedRole, setSelectedRole] = useState<ApiBookingRole>('customer');
 
+  // Validate and update selected role if it's no longer available
   useEffect(() => {
-    if (!availableRoles.includes(selectedRole)) {
-      setSelectedRole(availableRoles[0] ?? 'customer');
+    if (availableRoles.length > 0 && !availableRoles.includes(selectedRole)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedRole(availableRoles[0] as ApiBookingRole);
     }
-  }, [availableRoles, selectedRole]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableRoles]);
 
   const bookings = useRemoteData(
     (signal) => {
@@ -52,6 +58,17 @@ export default function BookingsScreen() {
     },
     [accessToken, selectedRole],
   );
+  const refreshBookings = bookings.refresh;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (availableRoles.includes('customer')) {
+        setSelectedRole('customer');
+      }
+
+      refreshBookings();
+    }, [availableRoles, refreshBookings]),
+  );
 
   const titleByListingId = useRemoteData(async (signal) => {
     if (!bookings.data?.items.length || !accessToken) {
@@ -60,7 +77,7 @@ export default function BookingsScreen() {
 
     const entries = await Promise.all(
       bookings.data.items.map(async (booking) => {
-        const listing = await apiClient.getListing(booking.listingId, signal);
+        const listing = await apiClient.getListing(booking.listingId, signal, accessToken ?? undefined);
         return [booking.listingId, listing.title] as const;
       }),
     );
@@ -68,8 +85,8 @@ export default function BookingsScreen() {
     return new Map(entries);
   }, [bookings.data?.items, accessToken]);
 
-  const completed = useMemo(() => (bookings.data?.items ?? []).filter((booking) => booking.status === 'completed'), [bookings.data?.items]);
-  const upcoming = useMemo(() => (bookings.data?.items ?? []).filter((booking) => booking.status !== 'completed'), [bookings.data?.items]);
+  const completed = useMemo(() => (bookings.data?.items ?? []).filter((booking) => booking.status.kind === 'completed'), [bookings.data?.items]);
+  const upcoming = useMemo(() => (bookings.data?.items ?? []).filter((booking) => booking.status.kind !== 'completed'), [bookings.data?.items]);
 
   return (
     <AppScreen>
@@ -83,7 +100,7 @@ export default function BookingsScreen() {
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {availableRoles.map((role) => (
-              <Pill key={role} label={role} selected={selectedRole === role} onPress={() => setSelectedRole(role)} />
+              <Pill key={role} label={t(`bookings.roles.${role}`)} selected={selectedRole === role} onPress={() => setSelectedRole(role as ApiBookingRole)} />
             ))}
           </View>
         </View>
@@ -102,6 +119,7 @@ export default function BookingsScreen() {
       <SectionTitle title={t('bookings.upcoming')} />
       <View style={{ gap: 12 }}>
         {bookings.loading ? <Text style={{ color: theme.textSecondary }}>{t('common.loading')}</Text> : null}
+        {!bookings.loading && bookings.error ? <EmptyState title={t('search.errorTitle')} body={bookings.error} actionLabel={t('common.retry')} onActionPress={bookings.refresh} /> : null}
         {!bookings.loading && upcoming.length === 0 ? <EmptyState title={t('bookings.upcoming')} body={t('bookings.reviewLocked')} /> : null}
         {upcoming.map((booking) => (
           <BookingRow key={booking.id} booking={booking} listingTitle={titleByListingId.data?.get(booking.listingId) ?? booking.listingId} language={language} t={t} />

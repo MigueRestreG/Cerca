@@ -84,8 +84,8 @@ export default function AccountScreen() {
         <View style={{ gap: 10 }}>
           <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase', color: theme.accent }}>{t('account.capabilities')}</Text>
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{actor?.capacities.join(' · ') ?? t('account.noSession')}</Text>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{actor?.platformRole ?? t('account.noSession')}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{actor?.capacities.map((capacity) => t(`account.capacityValues.${capacity}`)).join(' · ') ?? t('account.noSession')}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{actor ? t(`account.platformRoleValues.${actor.platformRole}`) : t('account.noSession')}</Text>
             <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>ES / EN / PT</Text>
           </View>
         </View>

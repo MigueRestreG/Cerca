@@ -22,13 +22,13 @@ function SearchResultCard({ listing, language, categoryName, t }: { listing: Api
           <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.4, textTransform: 'uppercase', color: theme.textSecondary }}>{categoryName}</Text>
         </View>
         <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>
-          {formatDistance(listing.distanceMeters / 1000, language)} · {listing.status}
+          {formatDistance(listing.distanceMeters / 1000, language)} · {t(`listing.statusValues.${listing.status.kind}`)}
         </Text>
         <Text style={{ fontSize: 14, fontWeight: '800', color: theme.accentStrong }}>
           {listing.priceFrom ? formatMoney(listing.priceFrom, language) : '—'}
         </Text>
         <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textSecondary }}>
-          {listing.ratingAvg.toFixed(1)} · {formatCompactNumber(listing.ratingCount, language)} reviews
+          {listing.ratingAvg.toFixed(1)} · {formatCompactNumber(listing.ratingCount, language)} {t('common.reviews')}
         </Text>
         <SecondaryButton label={t('common.viewDetails')} href={`/(app)/listing/${listing.id}`} />
       </View>
@@ -134,7 +134,7 @@ export default function SearchScreen() {
           scrollEnabled={false}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
           renderItem={({ item }) => <SearchResultCard listing={item} language={language} categoryName={categoryNameById.get(item.categoryId) ?? item.categoryId} t={t} />}
-          ListHeaderComponent={<SectionTitle title={t('search.results')} subtitle={`${listings.data?.items.length ?? 0} items`} />}
+          ListHeaderComponent={<SectionTitle title={t('search.results')} subtitle={`${listings.data?.items.length ?? 0} ${t('common.items')}`} />}
         />
       )}
     </AppScreen>

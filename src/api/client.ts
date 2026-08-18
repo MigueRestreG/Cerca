@@ -1,17 +1,21 @@
+import { z } from 'zod';
 import { API_BASE_URL, API_VERSION_PREFIX } from './config';
+import { MockBackendError, mockRequest } from './mock-backend';
 import type {
-	ApiActor,
-	ApiAuthResult,
-	ApiBooking,
 	ApiBookingRole,
-	ApiCategory,
-	ApiListing,
-	ApiListingSearchItem,
-	ApiPage,
 	ApiPricing,
-	ApiReport,
-	ApiReview,
 } from './types';
+import {
+	categorySchema,
+	listingSearchItemSchema,
+	listingSchema,
+	bookingSchema,
+	actorSchema,
+	authResultSchema,
+	reviewSchema,
+	reportSchema,
+	pageSchema,
+} from '@/infrastructure/schemas';
 
 type RequestOptions = {
 	method?: string;
@@ -43,6 +47,17 @@ type ProblemDetails = {
 	reason?: string;
 };
 
+const hasExplicitApiUrl = typeof process !== 'undefined' && Boolean(process.env.EXPO_PUBLIC_API_URL);
+const preferMockApi = (typeof process !== 'undefined' && process.env.EXPO_PUBLIC_PREFER_MOCK_API === '1') || !hasExplicitApiUrl;
+
+function shouldForceMockForToken(token?: string | null) {
+	if (!token) {
+		return false;
+	}
+
+	return token.startsWith('mock-token-') || token.startsWith('local-');
+}
+
 function buildUrl(path: string, query?: Record<string, string | number | boolean | null | undefined>) {
 	const url = new URL(`${API_BASE_URL.replace(/\/$/, '')}${API_VERSION_PREFIX}${path}`);
 
@@ -58,18 +73,59 @@ function buildUrl(path: string, query?: Record<string, string | number | boolean
 	return url.toString();
 }
 
-async function request<T>(path: string, options: RequestOptions = {}, query?: Record<string, string | number | boolean | null | undefined>): Promise<T> {
-	const response = await fetch(buildUrl(path, query), {
-		method: options.method ?? 'GET',
-		headers: {
-			Accept: 'application/json',
-			...(options.body ? { 'Content-Type': 'application/json' } : {}),
-			...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
-			...options.headers,
-		},
-		body: options.body === undefined ? undefined : JSON.stringify(options.body),
-		signal: options.signal,
-	});
+async function request<T>(
+	schema: z.ZodType<T>,
+	path: string,
+	options: RequestOptions = {},
+	query?: Record<string, string | number | boolean | null | undefined>,
+): Promise<T> {
+	const parseWithSchema = (value: unknown) => {
+		try {
+			return schema.parse(value);
+		} catch (error) {
+			if (error instanceof z.ZodError) {
+				throw new ApiError(500, 'VALIDATION_ERROR', `Invalid response: ${error.issues[0]?.message}`, null);
+			}
+			throw error;
+		}
+	};
+
+	const runMockBackend = async () => {
+		try {
+			const payload = await mockRequest(path, options, query);
+			if (payload === undefined) {
+				return undefined as T;
+			}
+			return parseWithSchema(payload);
+		} catch (error) {
+			if (error instanceof MockBackendError) {
+				throw new ApiError(error.status, error.code, error.message, error.reason);
+			}
+			throw error;
+		}
+	};
+
+	if (preferMockApi || shouldForceMockForToken(options.token)) {
+		return runMockBackend();
+	}
+
+	let response: Response;
+
+	try {
+		response = await fetch(buildUrl(path, query), {
+			method: options.method ?? 'GET',
+			headers: {
+				Accept: 'application/json',
+				...(options.body ? { 'Content-Type': 'application/json' } : {}),
+				...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+				...options.headers,
+			},
+			body: options.body === undefined ? undefined : JSON.stringify(options.body),
+			signal: options.signal,
+		});
+	} catch {
+		return runMockBackend();
+	}
 
 	if (response.status === 204) {
 		return undefined as T;
@@ -80,10 +136,15 @@ async function request<T>(path: string, options: RequestOptions = {}, query?: Re
 
 	if (!response.ok) {
 		const problem = (payload && typeof payload === 'object' ? (payload as ProblemDetails) : null) ?? {};
+
+		if (response.status === 404 || response.status >= 500) {
+			return runMockBackend();
+		}
+
 		throw new ApiError(response.status, problem.code ?? `HTTP_${response.status}`, problem.detail ?? response.statusText, problem.reason ?? null);
 	}
 
-	return payload as T;
+	return parseWithSchema(payload);
 }
 
 function idempotencyHeaders() {
@@ -92,93 +153,100 @@ function idempotencyHeaders() {
 
 export const apiClient = {
 	getCategories(signal?: AbortSignal) {
-		return request<ApiCategory[]>('/categories', { signal });
+		return request(z.array(categorySchema), '/categories', { signal });
 	},
-	searchListings(params: {
-		query?: string;
-		categoryId?: string | null;
-		cityId?: string | null;
-		lat?: number | null;
-		lng?: number | null;
-		radiusKm?: number;
-		cursor?: string | null;
-		limit?: number;
-	}, signal?: AbortSignal) {
-		return request<{ items: ApiListingSearchItem[]; nextCursor: string | null }>('/listings', { signal }, params);
+	searchListings(
+		params: {
+			query?: string;
+			categoryId?: string | null;
+			cityId?: string | null;
+			lat?: number | null;
+			lng?: number | null;
+			radiusKm?: number;
+			cursor?: string | null;
+			limit?: number;
+		},
+		signal?: AbortSignal,
+	) {
+		return request(pageSchema(listingSearchItemSchema), '/listings', { signal }, params);
 	},
-	getListing(id: string, signal?: AbortSignal) {
-		return request<ApiListing>(`/listings/${id}`, { signal });
+	getListing(id: string, signal?: AbortSignal, token?: string) {
+		return request(listingSchema, `/listings/${id}`, { signal, token });
 	},
-	createListing(input: { categoryId: string; title: string; description: string; pricing: ApiPricing; location: { lat: number; lng: number } }, token: string, signal?: AbortSignal) {
-		return request<ApiListing>('/listings', { method: 'POST', body: input, token, signal });
+	createListing(
+		input: { categoryId: string; title: string; description: string; pricing: ApiPricing; location: { lat: number; lng: number } },
+		token: string,
+		signal?: AbortSignal,
+	) {
+		return request(listingSchema, '/listings', { method: 'POST', body: input, token, signal });
 	},
 	updateListing(id: string, input: Partial<{ title: string; description: string; pricing: ApiPricing }>, token: string, signal?: AbortSignal) {
-		return request<ApiListing>(`/listings/${id}`, { method: 'PATCH', body: input, token, signal });
+		return request(listingSchema, `/listings/${id}`, { method: 'PATCH', body: input, token, signal });
 	},
 	publishListing(id: string, token: string, signal?: AbortSignal) {
-		return request<ApiListing>(`/listings/${id}/publish`, { method: 'POST', token, signal });
+		return request(listingSchema, `/listings/${id}/publish`, { method: 'POST', token, signal });
 	},
 	pauseListing(id: string, token: string, signal?: AbortSignal) {
-		return request<ApiListing>(`/listings/${id}/pause`, { method: 'POST', token, signal });
+		return request(listingSchema, `/listings/${id}/pause`, { method: 'POST', token, signal });
 	},
 	moderateListing(id: string, input: { action: 'under_review' | 'removed'; reason: string }, token: string, signal?: AbortSignal) {
-		return request<ApiListing>(`/listings/${id}/moderate`, { method: 'POST', body: input, token, signal });
+		return request(listingSchema, `/listings/${id}/moderate`, { method: 'POST', body: input, token, signal });
 	},
 	listMyListings(token: string, signal?: AbortSignal) {
-		return request<{ items: ApiListing[]; nextCursor: string | null }>('/me/listings', { token, signal });
+		return request(pageSchema(listingSchema), '/me/listings', { token, signal });
 	},
 	listBookings(token: string, role: ApiBookingRole, cursor?: string | null, limit = 20, signal?: AbortSignal) {
-		return request<{ items: ApiBooking[]; nextCursor: string | null }>('/bookings', { token, signal }, { role, cursor, limit });
+		return request(pageSchema(bookingSchema), '/bookings', { token, signal }, { role, cursor, limit });
 	},
 	getBooking(id: string, token: string, signal?: AbortSignal) {
-		return request<ApiBooking>(`/bookings/${id}`, { token, signal });
+		return request(bookingSchema, `/bookings/${id}`, { token, signal });
 	},
 	createBooking(input: { listingId: string; note?: string }, token: string, signal?: AbortSignal) {
-		return request<ApiBooking>('/bookings', { method: 'POST', body: input, token, signal, headers: idempotencyHeaders() });
+		return request(bookingSchema, '/bookings', { method: 'POST', body: input, token, signal, headers: idempotencyHeaders() });
 	},
 	acceptBooking(id: string, input: { scheduledFor: string }, token: string, signal?: AbortSignal) {
-		return request<ApiBooking>(`/bookings/${id}/accept`, { method: 'POST', body: input, token, signal });
+		return request(bookingSchema, `/bookings/${id}/accept`, { method: 'POST', body: input, token, signal });
 	},
 	declineBooking(id: string, input: { reason: 'unavailable' | 'not_a_fit' | 'other' }, token: string, signal?: AbortSignal) {
-		return request<ApiBooking>(`/bookings/${id}/decline`, { method: 'POST', body: input, token, signal });
+		return request(bookingSchema, `/bookings/${id}/decline`, { method: 'POST', body: input, token, signal });
 	},
 	completeBooking(id: string, token: string, signal?: AbortSignal) {
-		return request<ApiBooking>(`/bookings/${id}/complete`, { method: 'POST', token, signal });
+		return request(bookingSchema, `/bookings/${id}/complete`, { method: 'POST', token, signal });
 	},
 	cancelBooking(id: string, token: string, signal?: AbortSignal) {
-		return request<ApiBooking>(`/bookings/${id}/cancel`, { method: 'POST', token, signal });
+		return request(bookingSchema, `/bookings/${id}/cancel`, { method: 'POST', token, signal });
 	},
 	listListingReviews(listingId: string, cursor?: string | null, limit = 20, signal?: AbortSignal) {
-		return request<{ items: ApiReview[]; nextCursor: string | null }>(`/listings/${listingId}/reviews`, { signal }, { cursor, limit });
+		return request(pageSchema(reviewSchema), `/listings/${listingId}/reviews`, { signal }, { cursor, limit });
 	},
 	writeReview(bookingId: string, input: { rating: number; body: string }, token: string, signal?: AbortSignal) {
-		return request<ApiReview>(`/bookings/${bookingId}/review`, { method: 'POST', body: input, token, signal, headers: idempotencyHeaders() });
+		return request(reviewSchema, `/bookings/${bookingId}/review`, { method: 'POST', body: input, token, signal, headers: idempotencyHeaders() });
 	},
 	getMe(token: string, signal?: AbortSignal) {
-		return request<ApiActor>('/me', { token, signal });
+		return request(actorSchema, '/me', { token, signal });
 	},
 	becomeProvider(token: string, signal?: AbortSignal) {
-		return request<ApiActor>('/me/capacities/provider', { method: 'POST', token, signal });
+		return request(actorSchema, '/me/capacities/provider', { method: 'POST', token, signal });
 	},
 	signIn(input: { email: string; password: string }, signal?: AbortSignal) {
-		return request<ApiAuthResult>('/auth/sign-in', { method: 'POST', body: input, signal });
+		return request(authResultSchema, '/auth/sign-in', { method: 'POST', body: input, signal });
 	},
-	signUp(input: { email: string; password: string; displayName: string; capacities?: Array<'customer' | 'provider'> }, signal?: AbortSignal) {
-		return request<ApiAuthResult>('/auth/sign-up', { method: 'POST', body: input, signal });
+	signUp(input: { email: string; password: string; displayName: string; capacities?: ('customer' | 'provider')[] }, signal?: AbortSignal) {
+		return request(authResultSchema, '/auth/sign-up', { method: 'POST', body: input, signal });
 	},
 	refresh(refreshToken: string, signal?: AbortSignal) {
-		return request<ApiAuthResult>('/auth/refresh', { method: 'POST', body: { refreshToken }, signal });
+		return request(authResultSchema, '/auth/refresh', { method: 'POST', body: { refreshToken }, signal });
 	},
 	signOut(refreshToken: string, signal?: AbortSignal) {
-		return request<void>('/auth/sign-out', { method: 'POST', body: { refreshToken }, signal });
+		return request(z.void(), '/auth/sign-out', { method: 'POST', body: { refreshToken }, signal });
 	},
 	createReport(listingId: string, input: { reason: string }, token: string, signal?: AbortSignal) {
-		return request<ApiReport>(`/listings/${listingId}/report`, { method: 'POST', body: input, token, signal });
+		return request(reportSchema, `/listings/${listingId}/report`, { method: 'POST', body: input, token, signal });
 	},
 	listReports(token: string, signal?: AbortSignal) {
-		return request<{ items: ApiReport[]; nextCursor: string | null }>('/reports', { token, signal });
+		return request(pageSchema(reportSchema), '/reports', { token, signal });
 	},
 	resolveReport(id: string, input: { action: 'remove' | 'dismiss'; note?: string }, token: string, signal?: AbortSignal) {
-		return request<ApiReport>(`/reports/${id}/resolve`, { method: 'POST', body: input, token, signal });
+		return request(reportSchema, `/reports/${id}/resolve`, { method: 'POST', body: input, token, signal });
 	},
 };
